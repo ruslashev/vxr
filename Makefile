@@ -1,6 +1,6 @@
 CXX = clang++
 EXECNAME = vxr
-OBJS = objs/main.o objs/pixeldrawer.o
+OBJS = objs/main.o objs/pixeldrawer.o objs/textures.o objs/game.o
 
 $(EXECNAME): $(OBJS)
 	$(CXX) -o $@ $^ -lSDL2
