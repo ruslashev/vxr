@@ -6,10 +6,6 @@ int main()
 {
 	PixelDrawer drawer;
 
-	drawer.WritePixel(0, 0, 0xFFFF0000);
-	drawer.WritePixel(1, 0, 0xFF00FF00);
-	drawer.WritePixel(0, 1, 0xFF0000FF);
-
 	SDL_Event event;
 	bool running = true;
 	double lastUpdate = 0.0;
@@ -17,17 +13,17 @@ int main()
 		while (SDL_PollEvent(&event) != 0) {
 			if (event.type == SDL_QUIT)
 				running = false;
-
-			if (event.type == SDL_KEYDOWN)
+			else if (event.type == SDL_KEYDOWN)
 				handleInput(SDL_GetKeyboardState(NULL), true);
-
-			if (event.type == SDL_KEYUP)
+			else if (event.type == SDL_KEYUP)
 				handleInput(SDL_GetKeyboardState(NULL), false);
 		}
 
-#define CURTIME() (clock() / (float) CLOCKS_PER_SEC)
-		Update(CURTIME() - lastUpdate);
-		lastUpdate = CURTIME();
+		auto curtime = []() -> double { return clock() / (double)CLOCKS_PER_SEC; };
+
+		Update(curtime() - lastUpdate);
+		lastUpdate = curtime();
+
 		DrawFrame(&drawer);
 
 		drawer.Update();
