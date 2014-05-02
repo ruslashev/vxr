@@ -11,6 +11,7 @@ struct vec3 {
 	vec3& operator+= (const vec3 &v) { x += v.x; y += v.y; z += v.z; return *this; }
 	vec3 operator- (const vec3 &v) const { return vec3(x - v.x, y - v.y, z - v.z); }
 	vec3 operator* (const double &r) const { return vec3(x*r, y*r, z*r); }
+	vec3 operator* (const vec3 &v) const { return vec3(x*v.x, y*v.y, z*v.z); }
 
 	double lengthSq() const { return x*x + y*y + z*z; }
 	double length() const { return sqrt(lengthSq()); }
@@ -25,35 +26,15 @@ struct vec3 {
 	double dot(const vec3 &v) const { return x*v.x + y*v.y + z*v.z; }
 };
 
-struct rgb {
-	unsigned char r, g, b;
-	rgb () : r(0), g(0), b(0) {}
-	rgb (unsigned char a) : r(a), g(a), b(a) {}
-	rgb (unsigned char a, unsigned char b, unsigned char c) : r(a), g(b), b(c) {}
-	rgb operator* (const double &a) const { return rgb(r*a, g*a, b*a); }
-	rgb operator* (const rgb &o) const { return rgb(r*o.r, g*o.g, b*o.b); }
-	rgb operator+ (const rgb &o) const { return rgb(r+o.r, g+o.g, b+o.b); }
-
-	void unpack(uint32_t col) {
-		r = ((col & 0xff0000) >> 16);
-		g = ((col & 0x00ff00) >> 8);
-		b =  (col & 0x0000ff);
-	}
-	uint32_t pack() const {
-		return ((0xFF << 24) | (r << 16) | (g << 8) | b);
-	}
-};
-const rgb skyColor(123, 202, 239);
-
 class Sphere
 {
 public:
 	vec3 center;
 	double radius;
-	rgb surfaceColor, emissionColor;
+	vec3 surfaceColor, emissionColor;
 	double reflection;
-	Sphere(const vec3 &c, const double &r, const rgb &sc,
-			const double &refl = 0, const rgb &ec = 0) :
+	Sphere(const vec3 &c, const double &r, const vec3 &sc,
+			const double &refl = 0, const vec3 &ec = 0) :
 		center(c), radius(r), surfaceColor(sc), emissionColor(ec),
 		reflection(refl)
 	{}
@@ -86,6 +67,27 @@ double lerp(const double &a, const double &b, const double &t)
 }
 
 #if 0
+struct rgb {
+	unsigned char r, g, b;
+	rgb () : r(0), g(0), b(0) {}
+	rgb (unsigned char a) : r(a), g(a), b(a) {}
+	rgb (unsigned char a, unsigned char b, unsigned char c) : r(a), g(b), b(c) {}
+	rgb operator* (const double &a) const { return rgb(r*a, g*a, b*a); }
+	rgb operator* (const rgb &o) const { return rgb(r*o.r, g*o.g, b*o.b); }
+	rgb operator+ (const rgb &o) const { return rgb(r+o.r, g+o.g, b+o.b); }
+
+	void unpack(uint32_t col) {
+		r = ((col & 0xff0000) >> 16);
+		g = ((col & 0x00ff00) >> 8);
+		b =  (col & 0x0000ff);
+	}
+	uint32_t pack() const {
+		return ((0xFF << 24) | (r << 16) | (g << 8) | b);
+	}
+};
+
+const rgb skyColor(123, 202, 239);
+
 vec3 position;
 vec3 velocity;
 double pitch = 0;
@@ -182,7 +184,7 @@ void handleInput(const uint8_t *states, bool down) {
 
 const double bias = 0.0001;
 const int maxDepth = 3;
-rgb trace(const vec3 &origin, const vec3 &direction,
+vec3 trace(const vec3 &origin, const vec3 &direction,
 		const std::vector<Sphere*> spheres, const int depth)
 {
 	double distance = INFINITY;
@@ -198,9 +200,9 @@ rgb trace(const vec3 &origin, const vec3 &direction,
 		}
 	}
 	if (sphere == NULL)
-		return skyColor;
+		return vec3(2);
 
-	rgb surfaceColor;
+	vec3 surfaceColor;
 	vec3 intersection = origin + direction*distance;
 	vec3 normal = intersection - sphere->center;
 	normal.normalize();
@@ -210,14 +212,14 @@ rgb trace(const vec3 &origin, const vec3 &direction,
 		double fresnelEffect = lerp(pow((1-facingRatio), 3), 1, 0.1); // TODO adjust
 
 		vec3 reflectionDir = direction - normal*2*direction.dot(normal);
-		rgb reflection = trace(intersection + normal*bias,
+		vec3 reflection = trace(intersection + normal*bias,
 				reflectionDir, spheres, depth+1);
 		surfaceColor = reflection*fresnelEffect*sphere->surfaceColor;
 	} else { // diffuse
 		for (unsigned i = 0; i < spheres.size(); i++) {
-			if (spheres[i]->emissionColor.r > 0) {
+			if (spheres[i]->emissionColor.x > 0) {
 				// this is a light
-				rgb transmission = 1;
+				vec3 transmission = 1;
 				vec3 lightDirection = spheres[i]->center - intersection;
 				lightDirection.normalize();
 				for (unsigned j = 0; j < spheres.size(); ++j) {
@@ -232,8 +234,7 @@ rgb trace(const vec3 &origin, const vec3 &direction,
 						break;
 					}
 				}
-				// TODO
-				surfaceColor = surfaceColor + sphere->surfaceColor * transmission *
+				surfaceColor += sphere->surfaceColor * transmission *
 					std::max(0.0, normal.dot(lightDirection)) * spheres[i]->emissionColor;
 			}
 		}
@@ -244,13 +245,13 @@ rgb trace(const vec3 &origin, const vec3 &direction,
 std::vector<Sphere*> spheres;
 void Init()
 {
-	spheres.push_back(new Sphere(vec3(0, -10004, -20), 10000, rgb(51, 51, 51), 0));
-	spheres.push_back(new Sphere(vec3(0, 0, -20),    4, rgb(255, 81, 91), 1));
-	spheres.push_back(new Sphere(vec3(5, -1, -15),   2, rgb(200, 180, 120), 1));
-	spheres.push_back(new Sphere(vec3(5, 0, -25),    3, rgb(165, 196, 240), 1));
-	spheres.push_back(new Sphere(vec3(-5.5, 0, -15), 3, rgb(200, 200, 200), 1));
+	spheres.push_back(new Sphere(vec3(0, -10004, -20), 10000, vec3(0.2), 0, 0.0));
+	spheres.push_back(new Sphere(vec3(0, 0, -20), 4, vec3(1.00, 0.32, 0.36), 1, 0.5));
+	spheres.push_back(new Sphere(vec3(5, -1, -15), 2, vec3(0.90, 0.76, 0.46), 1, 0.0));
+	spheres.push_back(new Sphere(vec3(5, 0, -25), 3, vec3(0.65, 0.77, 0.97), 1, 0.0));
+	spheres.push_back(new Sphere(vec3(-5.5, 0, -15), 3, vec3(0.90, 0.90, 0.90), 1, 0.0));
 	// light
-	spheres.push_back(new Sphere(vec3(0, 20, -30),   3, rgb(0), 0, rgb(3)));
+	spheres.push_back(new Sphere(vec3(0, 20, -30), 3, vec3(0), 0, vec3(3)));
 }
 
 void Cleanup()
@@ -274,18 +275,22 @@ void DrawFrame(PixelDrawer *drawer)
 		double y = (1 - 2*(dy+0.5)/WindowHeight) * angle;
 		vec3 direction(x, y, -1);
 		direction.normalize();
-		rgb pxColor = trace(vec3(0), direction, spheres, 0);
-		drawer->WritePixel(dx, dy, skyColor.pack());
+		vec3 pxColor = trace(vec3(0), direction, spheres, 0);
+		pxColor.x = std::min(1.0, pxColor.x);
+		pxColor.y = std::min(1.0, pxColor.y);
+		pxColor.z = std::min(1.0, pxColor.z);
+		pxColor = pxColor*255.0;
+		uint32_t outColor = ((0xFF << 24) |
+				((unsigned char)pxColor.x << 16) |
+				((unsigned char)pxColor.y << 8) |
+				(unsigned char)pxColor.z);
+		drawer->WritePixel(dx, dy, outColor);
 	}
 
 	// Aim reticle
-	for (int x = WindowWidth/2-5; x < WindowWidth/2+5; x++) {
-		drawer->WritePixel(x, WindowHeight/2-1, 0xFFFFFFFF);
-		drawer->WritePixel(x, WindowHeight/2,   0xFFFFFFFF);
-	}
-	for (int y = WindowHeight/2-5; y < WindowHeight/2+5; y++) {
-		drawer->WritePixel(WindowWidth/2-1, y, 0xFFFFFFFF);
-		drawer->WritePixel(WindowWidth/2,   y, 0xFFFFFFFF);
-	}
+	for (int x = WindowWidth/2-5; x < WindowWidth/2+5; x++)
+		drawer->WritePixel(x, WindowHeight/2, 0xFFFFFFFF);
+	for (int y = WindowHeight/2-5; y < WindowHeight/2+5; y++)
+		drawer->WritePixel(WindowWidth/2, y, 0xFFFFFFFF);
 }
 
