@@ -12,6 +12,7 @@ void Init();
 void Update(double dt);
 void handleInput(const uint8_t *states, bool down);
 void DrawFrame(PixelDrawer *drawer);
+void Cleanup();
 
 #endif
 
