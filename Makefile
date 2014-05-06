@@ -7,7 +7,7 @@ $(EXECNAME): $(OBJS)
 	./$(EXECNAME)
 
 objs/%.o: %.cpp
-	$(CXX) -c -o $@ $< -Wall -g -std=c++0x
+	$(CXX) -c -o $@ $< -Wall -std=c++0x -O3
 
 clean:
 	-rm -f $(OBJS) $(EXECNAME)

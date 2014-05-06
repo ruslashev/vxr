@@ -41,7 +41,7 @@ public:
 
 	bool intersect(const vec3 &rayorig, const vec3 &raydir, double *dist) const
 	{
-		vec3 l = center - rayorig;
+		const vec3 l = center - rayorig;
 		const double tca = l.dot(raydir);
 		if (tca < 0)
 			return false;
@@ -65,13 +65,75 @@ public:
 	}
 };
 
+vec3 position;
+vec3 velocity;
+double pitch = 0;
+double yaw = 0;
+
+int pitchChange = 0;
+int yawChange = 0;
+
+bool keyW = false;
+bool keyA = false;
+bool keyS = false;
+bool keyD = false;
+
+void Update(double dt)
+{
+	pitch += 1.2*pitchChange*dt;
+	yaw += 1.2*yawChange*dt;
+
+	if (pitch > M_PI_2) pitch = M_PI_2;
+	else if (pitch < -M_PI_2) pitch = -M_PI_2;
+
+	if (yaw > M_PI*2 || yaw < -M_PI*2)
+		yaw = 0;
+
+	velocity = 0;
+
+	if (keyA)
+		velocity.x -= 100.0*dt;
+	if (keyW)
+		velocity.z -= 100.0*dt;
+	if (keyS)
+		velocity.z += 100.0*dt;
+	if (keyD)
+		velocity.x += 100.0*dt;
+
+	position += velocity*dt;
+}
+
+void handleInput(const uint8_t *states, bool down) {
+	// View
+	if (states[SDL_SCANCODE_UP])
+		pitchChange += down ? 1 : -1;
+	if (states[SDL_SCANCODE_DOWN])
+		pitchChange += down ? -1 : 1;
+	if (states[SDL_SCANCODE_LEFT])
+		yawChange += down ? 1 : -1;
+	if (states[SDL_SCANCODE_RIGHT])
+		yawChange += down ? -1 : 1;
+
+	// Movement
+	keyW = keyA = keyS = keyD = false;
+	if (down) {
+		keyW = states[SDL_SCANCODE_W];
+		keyA = states[SDL_SCANCODE_A];
+		keyS = states[SDL_SCANCODE_S];
+		keyD = states[SDL_SCANCODE_D];
+	}
+
+	if (states[SDL_SCANCODE_SPACE] && down)
+		velocity.y += 8.0;
+}
+
 double lerp(const double &a, const double &b, const double &t)
 {
 	return b*t + a*(1 - t);
 }
 
 const double bias = 0.0001;
-const int maxDepth = 3;
+const int maxDepth = 10;
 vec3 trace(const vec3 &origin, const vec3 &direction,
 		const std::vector<Sphere*> spheres, const int depth)
 {
@@ -131,11 +193,12 @@ vec3 trace(const vec3 &origin, const vec3 &direction,
 std::vector<Sphere*> spheres;
 void Init()
 {
-	spheres.push_back(new Sphere(vec3(0, -10004, -20), 10000, vec3(0.2), 0, 0.0));
-	spheres.push_back(new Sphere(vec3(0, 0, -20), 4, vec3(1.00, 0.32, 0.36), 1, 0.5));
+	spheres.push_back(new Sphere(vec3(0, 0, -20), 4, vec3(1.00, 0.32, 0.36), 1, 0.0));
 	spheres.push_back(new Sphere(vec3(5, -1, -15), 2, vec3(0.90, 0.76, 0.46), 1, 0.0));
 	spheres.push_back(new Sphere(vec3(5, 0, -25), 3, vec3(0.65, 0.77, 0.97), 1, 0.0));
 	spheres.push_back(new Sphere(vec3(-5.5, 0, -15), 3, vec3(0.90, 0.90, 0.90), 1, 0.0));
+
+	spheres.push_back(new Sphere(vec3(0, -10004, -20), 10000, vec3(0.2), 0, 0.0));
 	// light
 	spheres.push_back(new Sphere(vec3(0, 20, -30), 3, vec3(0), 0, vec3(3)));
 }
@@ -161,7 +224,7 @@ void DrawFrame(PixelDrawer *drawer)
 			double y = (1 - 2*(dy+0.5)/WindowHeight) * angle;
 			vec3 direction(x, y, -1);
 			direction.normalize();
-			vec3 pxColor = trace(vec3(0), direction, spheres, 0);
+			vec3 pxColor = trace(position, direction, spheres, 0);
 			pxColor.x = std::min(1.0, pxColor.x);
 			pxColor.y = std::min(1.0, pxColor.y);
 			pxColor.z = std::min(1.0, pxColor.z);
@@ -179,120 +242,4 @@ void DrawFrame(PixelDrawer *drawer)
 	for (int y = WindowHeight/2-4; y < WindowHeight/2+5; y++)
 		drawer->WritePixel(WindowWidth/2, y, 0xFFFFFFFF);
 }
-
-#if 0
-struct rgb {
-	unsigned char r, g, b;
-	rgb () : r(0), g(0), b(0) {}
-	rgb (unsigned char a) : r(a), g(a), b(a) {}
-	rgb (unsigned char a, unsigned char b, unsigned char c) : r(a), g(b), b(c) {}
-	rgb operator* (const double &a) const { return rgb(r*a, g*a, b*a); }
-	rgb operator* (const rgb &o) const { return rgb(r*o.r, g*o.g, b*o.b); }
-	rgb operator+ (const rgb &o) const { return rgb(r+o.r, g+o.g, b+o.b); }
-
-	void unpack(uint32_t col) {
-		r = ((col & 0xff0000) >> 16);
-		g = ((col & 0x00ff00) >> 8);
-		b =  (col & 0x0000ff);
-	}
-	uint32_t pack() const {
-		return ((0xFF << 24) | (r << 16) | (g << 8) | b);
-	}
-};
-
-const rgb skyColor(123, 202, 239);
-
-vec3 position;
-vec3 velocity;
-double pitch = 0;
-double yaw = 0;
-
-int pitchChange = 0;
-int yawChange = 0;
-double pitchCos;
-double yawCos;
-double pitchSin;
-double yawSin;
-
-bool keyW = false;
-bool keyA = false;
-bool keyS = false;
-bool keyD = false;
-
-void Init()
-{
-}
-
-void updateView()
-{
-	if (pitch > M_PI_2) pitch = M_PI_2;
-	else if (pitch < -M_PI_2) pitch = -M_PI_2;
-
-	pitchSin = sin(pitch);
-	pitchCos = cos(pitch);
-
-	if (yaw > M_PI*2 || yaw < -M_PI*2)
-		yaw = 0;
-
-	yawSin = sin(yaw);
-	yawCos = cos(yaw);
-}
-
-void Update(double dt)
-{
-	pitch += 1.2*pitchChange*dt;
-	yaw += 1.2*yawChange*dt;
-	updateView();
-
-	velocity = 0;
-
-	if (keyA) {
-		velocity.x += dt*200.0*cos(M_PI - yaw);
-		velocity.z += dt*200.0*sin(M_PI - yaw);
-	}
-	if (keyW) {
-		velocity.x += dt*200.0*cos(-M_PI_2 - yaw);
-		velocity.z += dt*200.0*sin(-M_PI_2 - yaw);
-	}
-	if (keyS) {
-		velocity.x += dt*200.0*cos(M_PI_2 - yaw);
-		velocity.z += dt*200.0*sin(M_PI_2 - yaw);
-	}
-	if (keyD) {
-		velocity.x += dt*200.0*cos(-yaw);
-		velocity.z += dt*200.0*sin(-yaw);
-	}
-
-	// Simulate gravity
-	velocity.y -= 20.0*dt;
-
-	position += velocity*dt;
-}
-
-void handleInput(const uint8_t *states, bool down) {
-	// View
-	if (states[SDL_SCANCODE_UP])
-		pitchChange += down ? 1 : -1;
-	if (states[SDL_SCANCODE_DOWN])
-		pitchChange += down ? -1 : 1;
-
-	if (states[SDL_SCANCODE_LEFT])
-		yawChange += down ? 1 : -1;
-	if (states[SDL_SCANCODE_RIGHT])
-		yawChange += down ? -1 : 1;
-
-	// Movement
-	if (states[SDL_SCANCODE_A])
-		keyA = down;
-	if (states[SDL_SCANCODE_W])
-		keyW = down;
-	if (states[SDL_SCANCODE_S])
-		keyS = down;
-	if (states[SDL_SCANCODE_D])
-		keyD = down;
-
-	if (states[SDL_SCANCODE_SPACE] && down)
-		velocity.y += 8.0;
-}
-#endif
 
