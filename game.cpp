@@ -1,4 +1,6 @@
 #include <vector>
+#include <thread>
+#include <mutex>
 #include "game.hpp"
 
 struct vec3 {
@@ -141,15 +143,15 @@ vec3 trace(const vec3 &origin, const vec3 &direction,
 	Sphere *sphere = NULL;
 	for (auto &s : spheres) {
 		double newDist = INFINITY;
-		if (s->intersect(origin, direction, &newDist)) {
+		if (s->intersect(origin, direction, &newDist))
 			if (newDist < distance) {
 				distance = newDist;
 				sphere = s;
 			}
-		}
 	}
 	if (sphere == NULL)
-		return vec3(2);
+		// return vec3(0.48235294, 0.7921568, 0.9372549);
+		return vec3(1);
 
 	vec3 surfaceColor;
 	vec3 intersection = origin + direction*distance;
@@ -158,7 +160,7 @@ vec3 trace(const vec3 &origin, const vec3 &direction,
 
 	if (depth < maxDepth && sphere->reflection > 0) {
 		double facingRatio = -direction.dot(normal);
-		double fresnelEffect = lerp(pow((1-facingRatio), 3), 1, 0.1); // TODO adjust
+		double fresnelEffect = lerp(pow(1-facingRatio, 3), 1, 0.1); // TODO adjust
 
 		vec3 reflectionDir = direction - normal*2*direction.dot(normal);
 		vec3 reflection = trace(intersection + normal*bias,
@@ -198,7 +200,7 @@ void Init()
 	spheres.push_back(new Sphere(vec3(5, 0, -25), 3, vec3(0.65, 0.77, 0.97), 1, 0.0));
 	spheres.push_back(new Sphere(vec3(-5.5, 0, -15), 3, vec3(0.90, 0.90, 0.90), 1, 0.0));
 
-	spheres.push_back(new Sphere(vec3(0, -10004, -20), 10000, vec3(0.2), 0, 0.0));
+	spheres.push_back(new Sphere(vec3(0, -10004, -20), 10000, vec3(0.2), 1, 0.0));
 	// light
 	spheres.push_back(new Sphere(vec3(0, 20, -30), 3, vec3(0), 0, vec3(3)));
 }
@@ -212,13 +214,15 @@ void Cleanup()
 	}
 }
 
-void DrawFrame(PixelDrawer *drawer)
-{
-	double fov = 30;
-	double angle = tan(M_PI_2 * fov / 180.0);
-	double aspectRatio = (double)WindowWidth / WindowHeight;
+static const double fov = 30;
+static const double angle = tan(M_PI_2 * fov / 180.0);
+static const double aspectRatio = (double)WindowWidth / WindowHeight;
+static PixelDrawer *drawerPtr;
+static std::mutex barrier;
 
-	for (int dy = 0; dy < WindowHeight; dy++)
+void ThreadWorker(int idx, int height)
+{
+	for (int dy = idx*height; dy < idx*height+height; dy++)
 		for (int dx = 0; dx < WindowWidth; dx++) {
 			double x = (2*(dx + 0.5)/WindowWidth-1) * angle * aspectRatio;
 			double y = (1 - 2*(dy+0.5)/WindowHeight) * angle;
@@ -232,9 +236,26 @@ void DrawFrame(PixelDrawer *drawer)
 			uint32_t outColor = ((0xFF << 24) |
 					((unsigned char)pxColor.x << 16) |
 					((unsigned char)pxColor.y << 8) |
-					(unsigned char)pxColor.z);
-			drawer->WritePixel(dx, dy, outColor);
+					 (unsigned char)pxColor.z);
+
+			std::lock_guard<std::mutex> block_threads_until_finish_this_job(barrier);
+			drawerPtr->WritePixel(dx, dy, outColor);
 		}
+}
+
+void DrawFrame(PixelDrawer *drawer)
+{
+	drawerPtr = drawer;
+
+	const int numberOfThreads = 3;
+	std::thread threads[numberOfThreads];
+
+	for (int i = 0; i < numberOfThreads; i++)
+		threads[i] = std::thread(ThreadWorker, i,
+				WindowHeight/numberOfThreads);
+
+	for (int i = 0; i < numberOfThreads; i++)
+		threads[i].join();
 
 	// Aim reticle
 	for (int x = WindowWidth/2-4; x < WindowWidth/2+5; x++)
